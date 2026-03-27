@@ -1,23 +1,21 @@
 """
-プロービング分析コード（順序ロジスティック回帰）
+Probing Analysis with Ordinal Logistic Regression
 
-活性化ベクトルに対して順序ロジスティック回帰（LogisticAT）を適用し、
-各層・各ヘッドの政策スタンス予測性能を評価する。
+Apply ordinal logistic regression (LogisticAT) to activation vectors
+to evaluate how well each layer and head encodes policy stances.
 
-- 手法: mord.LogisticAT（All-Threshold, 絶対誤差損失）
-- 評価: 5分割層化交差検証によるスピアマン相関係数
-- 正則化: α ∈ {0.01, 0.1, 1, 10, 100, 1000} から交差検証で選択
+- Method: mord.LogisticAT (All-Threshold, absolute error loss)
+- Evaluation: Spearman correlation via 5-fold stratified cross-validation
+- Regularization: alpha selected from {0.01, 0.1, 1, 10, 100, 1000}
 
-使用方法:
-    git clone https://github.com/tkhk405/Policy-Preference-Structure-Embedded-in-LLMs.git
-    cd Policy-Preference-Structure-Embedded-in-LLMs/code
-    python extract_activations.py  # 先に活性化ベクトルを抽出
+Usage:
+    python extract_activations.py  # Extract activation vectors first
     python probing.py
 """
 
 import os
 
-# numpy/MKL等のスレッド数を1に制限（joblibとの競合を防止）
+# Limit numpy/MKL threads to 1 (prevent conflicts with joblib parallelism)
 os.environ['OMP_NUM_THREADS'] = '1'
 os.environ['MKL_NUM_THREADS'] = '1'
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
@@ -38,7 +36,7 @@ warnings.filterwarnings("ignore")
 np.random.seed(42)
 
 # ==============================================================================
-# パス設定
+# Path settings
 # ==============================================================================
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(SCRIPT_DIR)
@@ -51,16 +49,16 @@ for subdir in ["rho", "coef", "alpha", "theta", "preds", "full"]:
     os.makedirs(os.path.join(RESULT_DIR, subdir), exist_ok=True)
 
 # ==============================================================================
-# データセット定義（6テーマ）
+# Dataset definitions (6 policy issues)
 # ==============================================================================
-# (CSVファイル名, ベクトルプレフィックス, 保存プレフィックス)
+# (CSV filename, vector prefix, save prefix)
 DATASETS = {
-    "Defense (防衛)":            ("defense.csv",         "Defense",  "Defense"),
-    "Social Welfare (社会福祉)": ("social_welfare.csv",  "Social",   "Social"),
-    "Public Works (公共事業)":   ("public_works.csv",    "Public",   "Public"),
-    "Fiscal Stimulus (財政出動)": ("fiscal_stimulus.csv", "Fiscal",   "Fiscal"),
-    "North Korea (北朝鮮)":      ("north_korea.csv",     "Nkorea",   "Nkorea"),
-    "Public Safety (治安)":      ("public_safety.csv",   "Security", "Security"),
+    "Defense":         ("defense.csv",         "Defense",  "Defense"),
+    "Social Welfare":  ("social_welfare.csv",  "Social",   "Social"),
+    "Public Works":    ("public_works.csv",    "Public",   "Public"),
+    "Fiscal Stimulus": ("fiscal_stimulus.csv", "Fiscal",   "Fiscal"),
+    "North Korea":     ("north_korea.csv",     "Nkorea",   "Nkorea"),
+    "Security":        ("public_safety.csv",   "Security", "Security"),
 }
 
 NUM_LAYERS = 42
@@ -69,7 +67,7 @@ ALPHAS = np.logspace(-2, 3, 6)  # [0.01, 0.1, 1, 10, 100, 1000]
 N_JOBS = 8
 
 # ==============================================================================
-# スピアマン相関の計算
+# Spearman correlation
 # ==============================================================================
 def calc_spearman(y_true, y_pred):
     if len(y_true) < 3 or np.std(y_true) == 0 or np.std(y_pred) == 0:
@@ -78,10 +76,10 @@ def calc_spearman(y_true, y_pred):
     return c if not np.isnan(c) else np.nan
 
 # ==============================================================================
-# 1ヘッド分の処理（並列化用）
+# Process one head (for parallel execution)
 # ==============================================================================
 def process_one_head(h_idx, layer_data, labels_ordinal, alphas):
-    """1つのヘッドに対する交差検証 + 全データ再学習を実行"""
+    """Run cross-validation and final training for a single head."""
     X = layer_data[:, h_idx, :]
     y = labels_ordinal
 
@@ -111,7 +109,7 @@ def process_one_head(h_idx, layer_data, labels_ordinal, alphas):
             if not np.isnan(score):
                 alpha_cv_scores[alpha].append(score)
 
-    # 最適αの選択
+    # Select best alpha
     avg_scores = {a: np.mean(s) if s else np.nan for a, s in alpha_cv_scores.items()}
     valid_scores = {k: v for k, v in avg_scores.items() if not np.isnan(v)}
 
@@ -122,13 +120,13 @@ def process_one_head(h_idx, layer_data, labels_ordinal, alphas):
         best_alpha = alphas[0]
         best_score = 0.0
 
-    # 全データで再学習
+    # Retrain on all data
     scaler_final = StandardScaler()
     X_final = scaler_final.fit_transform(X)
     final_model = mord.LogisticAT(alpha=best_alpha)
 
     coef = np.zeros(X.shape[1])
-    theta = np.zeros(4)  # 5カテゴリ → 4しきい値
+    theta = np.zeros(4)  # 5 categories -> 4 thresholds
 
     try:
         final_model.fit(X_final, y)
@@ -138,12 +136,12 @@ def process_one_head(h_idx, layer_data, labels_ordinal, alphas):
     except Exception:
         pass
 
-    oof_preds = oof_preds_temp[best_alpha] + 1  # 元スケール（1-5）に戻す
+    oof_preds = oof_preds_temp[best_alpha] + 1  # Convert back to original scale (1-5)
 
     return h_idx, best_score, best_alpha, coef, theta, oof_preds
 
 # ==============================================================================
-# メインループ
+# Main loop
 # ==============================================================================
 dataset_list = list(DATASETS.items())
 
@@ -152,10 +150,10 @@ for ds_idx, (theme_name, (csv_file, vec_prefix, save_prefix)) in enumerate(datas
     print(f"[{ds_idx+1}/{len(dataset_list)}] {theme_name}")
     print(f"{'=' * 60}")
 
-    # データ読み込み
+    # Load data
     csv_path = os.path.join(INPUT_DIR, csv_file)
     if not os.path.exists(csv_path):
-        print(f"CSVが見つかりません: {csv_path}")
+        print(f"CSV not found: {csv_path}")
         continue
 
     df = pd.read_csv(csv_path)
@@ -163,26 +161,26 @@ for ds_idx, (theme_name, (csv_file, vec_prefix, save_prefix)) in enumerate(datas
     df_filtered = df[valid_mask].copy()
 
     labels_original = df_filtered['Stance_Value'].astype(int).values
-    labels_ordinal = labels_original - 1  # 0-4に変換
+    labels_ordinal = labels_original - 1  # Convert to 0-4
 
-    print(f"データ数: {len(df_filtered)}")
+    print(f"Samples: {len(df_filtered)}")
 
     heatmap_rho = np.zeros((NUM_LAYERS, NUM_HEADS))
     best_alpha_data = np.zeros((NUM_LAYERS, NUM_HEADS))
     heatmap_coef = None
     heatmap_theta = None
 
-    # 層ごとのループ
+    # Layer-wise loop
     for layer_idx in tqdm(range(NUM_LAYERS), desc=f"[{save_prefix}]"):
         vec_path = os.path.join(VEC_DIR, f"{vec_prefix}_layer_{layer_idx:02d}.npy")
 
         if not os.path.exists(vec_path):
-            print(f"ベクトルが見つかりません: {vec_path}")
+            print(f"Vector not found: {vec_path}")
             continue
 
         full_layer_data = np.load(vec_path)
         if full_layer_data.shape[0] != len(df):
-            print(f"サイズ不一致: CSV={len(df)}, NPY={full_layer_data.shape[0]}")
+            print(f"Size mismatch: CSV={len(df)}, NPY={full_layer_data.shape[0]}")
             continue
 
         layer_data = full_layer_data[valid_mask]
@@ -193,7 +191,7 @@ for ds_idx, (theme_name, (csv_file, vec_prefix, save_prefix)) in enumerate(datas
 
         layer_oof_preds = np.zeros((len(labels_original), NUM_HEADS))
 
-        # ヘッドごとの処理を並列実行
+        # Parallel processing across heads
         results = Parallel(n_jobs=N_JOBS)(
             delayed(process_one_head)(h_idx, layer_data, labels_ordinal, ALPHAS)
             for h_idx in range(NUM_HEADS)
@@ -206,14 +204,14 @@ for ds_idx, (theme_name, (csv_file, vec_prefix, save_prefix)) in enumerate(datas
             heatmap_theta[layer_idx, h_idx, :] = theta
             layer_oof_preds[:, h_idx] = oof_preds
 
-        # 層ごとに保存
+        # Save per-layer results
         np.save(os.path.join(RESULT_DIR, "rho",   f"{save_prefix}_layer_{layer_idx:02d}_rho.npy"),   heatmap_rho[layer_idx])
         np.save(os.path.join(RESULT_DIR, "coef",  f"{save_prefix}_layer_{layer_idx:02d}_coef.npy"),  heatmap_coef[layer_idx])
         np.save(os.path.join(RESULT_DIR, "theta", f"{save_prefix}_layer_{layer_idx:02d}_theta.npy"), heatmap_theta[layer_idx])
         np.save(os.path.join(RESULT_DIR, "alpha", f"{save_prefix}_layer_{layer_idx:02d}_alpha.npy"), best_alpha_data[layer_idx])
         np.save(os.path.join(RESULT_DIR, "preds", f"{save_prefix}_layer_{layer_idx:02d}_preds.npy"), layer_oof_preds)
 
-    # 全層統合データの保存
+    # Save aggregated results
     if heatmap_coef is not None:
         np.save(os.path.join(RESULT_DIR, "full", f"{save_prefix}_heatmap_rho_full.npy"),  heatmap_rho)
         np.save(os.path.join(RESULT_DIR, "full", f"{save_prefix}_coef_full.npy"),         heatmap_coef)
@@ -221,6 +219,6 @@ for ds_idx, (theme_name, (csv_file, vec_prefix, save_prefix)) in enumerate(datas
         np.save(os.path.join(RESULT_DIR, "full", f"{save_prefix}_bestAlpha_full.npy"),    best_alpha_data)
         np.save(os.path.join(RESULT_DIR, "full", f"{save_prefix}_labels.npy"),            labels_original)
 
-    print(f"{theme_name} 完了")
+    print(f"{theme_name} done")
 
-print("\n全テーマの処理が完了しました")
+print("\nAll issues completed")
