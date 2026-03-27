@@ -1,16 +1,16 @@
 """
-活性化ベクトル抽出コード（Gemma-2-Llama-Swallow-9b）
+Activation Vector Extraction (Gemma-2-Llama-Swallow-9b)
 
-Gemma-2-Llama-Swallow-9b-pt-v0.1 の各層アテンションヘッドから
-活性化ベクトルを抽出する。
+Extract activation vectors from each layer's attention heads of
+Gemma-2-Llama-Swallow-9b-pt-v0.1.
 
-- モデル: tokyotech-llm/Gemma-2-Llama-Swallow-9b-pt-v0.1
-- 構造: 42層 × 16ヘッド × 256次元/ヘッド
-- 抽出方法: self_attn.o_proj の入力（線形変換前）をforward hookで取得
-- 抽出トークン: シーケンス最後のトークン
-- 保存形状: (サンプル数, 16, 256)
+- Model: tokyotech-llm/Gemma-2-Llama-Swallow-9b-pt-v0.1
+- Architecture: 42 layers x 16 heads x 256 dims/head
+- Method: Forward hook on self_attn.o_proj input (before linear projection)
+- Token: Last token of each sequence
+- Output shape: (num_samples, 16, 256)
 
-使用方法:
+Usage:
     git clone https://github.com/tkhk405/Policy-Preference-Structure-Embedded-in-LLMs.git
     cd Policy-Preference-Structure-Embedded-in-LLMs/code
     python extract_activations.py
@@ -25,7 +25,7 @@ import os
 import gc
 
 # ==============================================================================
-# パス設定
+# Path settings
 # ==============================================================================
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(SCRIPT_DIR)
@@ -35,19 +35,19 @@ OUTPUT_DIR = os.path.join(REPO_ROOT, "output", "activation_vectors")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # ==============================================================================
-# データセット定義（6テーマ）
+# Dataset definitions (6 policy issues)
 # ==============================================================================
 DATASETS = {
-    "Defense (防衛)":            ("defense.csv",         "Defense"),
-    "Social Welfare (社会福祉)": ("social_welfare.csv",  "Social"),
-    "Public Works (公共事業)":   ("public_works.csv",    "Public"),
-    "Fiscal Stimulus (財政出動)": ("fiscal_stimulus.csv", "Fiscal"),
-    "North Korea (北朝鮮)":      ("north_korea.csv",     "Nkorea"),
-    "Public Safety (治安)":      ("public_safety.csv",   "Security"),
+    "Defense":         ("defense.csv",         "Defense"),
+    "Social Welfare":  ("social_welfare.csv",  "Social"),
+    "Public Works":    ("public_works.csv",    "Public"),
+    "Fiscal Stimulus": ("fiscal_stimulus.csv", "Fiscal"),
+    "North Korea":     ("north_korea.csv",     "Nkorea"),
+    "Security":        ("public_safety.csv",   "Security"),
 }
 
 # ==============================================================================
-# モデルの読み込み
+# Load model
 # ==============================================================================
 MODEL_ID = "tokyotech-llm/Gemma-2-Llama-Swallow-9b-pt-v0.1"
 
@@ -72,19 +72,19 @@ num_layers = model.config.num_hidden_layers   # 42
 num_heads = model.config.num_attention_heads  # 16
 
 # ==============================================================================
-# Hook関数の定義
+# Hook function
 # ==============================================================================
 current_layer_activations = []
 
 def get_single_layer_hook(num_heads):
-    """o_proj層の入力（線形変換前）をヘッドごとに分割して取得するHook"""
+    """Hook to capture o_proj input (before linear projection), split by head."""
 
     def hook(module, input, output):
         hidden_states = input[0]
         input_dim = hidden_states.shape[-1]
         head_dim = input_dim // num_heads
 
-        # 最後のトークンのみ抽出し、ヘッドごとに分割
+        # Extract last token and reshape into per-head vectors
         last_token = hidden_states[:, -1, :]
         batch_size = last_token.shape[0]
         reshaped = last_token.view(batch_size, num_heads, head_dim)
@@ -93,42 +93,42 @@ def get_single_layer_hook(num_heads):
     return hook
 
 # ==============================================================================
-# メインループ（6テーマ × 42層）
+# Main loop (6 issues x 42 layers)
 # ==============================================================================
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
 for theme_name, (csv_file, save_prefix) in DATASETS.items():
     print(f"\n{'=' * 60}")
-    print(f"テーマ: {theme_name}")
+    print(f"Issue: {theme_name}")
     print(f"{'=' * 60}")
 
     gc.collect()
     torch.cuda.empty_cache()
 
-    # データ読み込み
+    # Load data
     file_path = os.path.join(INPUT_DIR, csv_file)
     if not os.path.exists(file_path):
-        print(f"ファイルが見つかりません: {file_path}")
+        print(f"File not found: {file_path}")
         continue
 
     df = pd.read_csv(file_path)
     texts = df['Generated_Text'].tolist()
-    print(f"データ数: {len(texts)} 件")
+    print(f"Samples: {len(texts)}")
 
-    # 層ごとにベクトルを抽出
+    # Extract vectors layer by layer
     for layer_idx in tqdm(range(num_layers), desc=f"[{save_prefix}]"):
         save_path = os.path.join(OUTPUT_DIR, f"{save_prefix}_layer_{layer_idx:02d}.npy")
 
-        # 計算済みならスキップ
+        # Skip if already computed
         if os.path.exists(save_path):
             continue
 
-        # Hook設定
+        # Register hook
         current_layer_activations = []
         layer_module = model.model.layers[layer_idx].self_attn.o_proj
         handle = layer_module.register_forward_hook(get_single_layer_hook(num_heads))
 
-        # バッチ推論
+        # Batch inference
         for i in range(0, len(texts), 8):
             batch = texts[i:i+8]
             inputs = tokenizer(
@@ -147,7 +147,7 @@ for theme_name, (csv_file, save_prefix) in DATASETS.items():
 
         handle.remove()
 
-        # 保存: (サンプル数, 16, 256)
+        # Save: (num_samples, 16, 256)
         layer_data = np.concatenate(current_layer_activations, axis=0)
         np.save(save_path, layer_data)
 
@@ -155,6 +155,6 @@ for theme_name, (csv_file, save_prefix) in DATASETS.items():
         gc.collect()
         torch.cuda.empty_cache()
 
-    print(f"{theme_name} 完了")
+    print(f"{theme_name} done")
 
-print("\n全テーマの処理が完了しました")
+print("\nAll issues completed")
