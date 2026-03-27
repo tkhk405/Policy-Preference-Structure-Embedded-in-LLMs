@@ -112,8 +112,7 @@ for theme_name, (csv_file, save_prefix) in DATASETS.items():
         continue
 
     df = pd.read_csv(file_path)
-    df_filtered = df[df['Stance_Value'].isin([1, 2, 3, 4, 5])].copy()
-    texts = df_filtered['Generated_Text'].tolist()
+    texts = df['Generated_Text'].tolist()
     print(f"データ数: {len(texts)} 件")
 
     # 層ごとにベクトルを抽出
