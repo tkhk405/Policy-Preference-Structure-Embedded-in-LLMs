@@ -1,19 +1,22 @@
 """
 Mantel Test: Comparison of LLM Internal Representations with Parliamentary Survey
 
-Compare three matrices via Mantel test (exact enumeration, 6! = 720 permutations):
+Compare matrices via Mantel test (exact enumeration, 6! = 720 permutations):
   1. Probing transfer matrix vs. Cosine similarity matrix
   2. Probing transfer matrix vs. Taniguchi-Asahi survey correlation matrix
   3. Cosine similarity matrix vs. Taniguchi-Asahi survey correlation matrix
+  4. Baseline (per-model and combined) vs. Taniguchi-Asahi survey
 
 Usage:
     python probing.py
     python transfer_analysis.py
     python cosine_similarity.py
+    python baseline_analysis.py
     python mantel_test.py
 """
 
 import os
+import glob
 import numpy as np
 import pandas as pd
 from scipy import stats
@@ -29,6 +32,7 @@ REPO_ROOT = os.path.dirname(SCRIPT_DIR)
 
 TRANSFER_PATH = os.path.join(REPO_ROOT, "output", "transfer_results", "transfer_matrix.csv")
 COSINE_PATH = os.path.join(REPO_ROOT, "output", "cosine_results", "cosine_similarity_matrix.csv")
+BASELINE_DIR = os.path.join(REPO_ROOT, "output", "baseline_results")
 RESULT_DIR = os.path.join(REPO_ROOT, "output", "mantel_results")
 os.makedirs(RESULT_DIR, exist_ok=True)
 
@@ -58,12 +62,20 @@ MATRIX_LABEL_MAP = {
 # Mantel test function (exact enumeration)
 # ==============================================================================
 def mantel_test(mat1, mat2, n):
-    """Mantel test (Spearman) with exact enumeration of all n! permutations."""
+    """Mantel test (Spearman) with exact enumeration of all n! permutations.
+
+    Returns (rho, p_value, n_permutations).
+    If mat1 has zero variance in upper triangle, returns (nan, nan, n_perm).
+    """
     def upper_tri(mat):
         return np.array([mat[i, j] for i in range(n) for j in range(i + 1, n)])
 
     ut1 = upper_tri(mat1)
     ut2 = upper_tri(mat2)
+
+    if np.std(ut1) == 0:
+        return np.nan, np.nan, 0
+
     obs, _ = stats.spearmanr(ut1, ut2)
 
     count = 0
@@ -72,6 +84,9 @@ def mantel_test(mat1, mat2, n):
         perm = list(perm)
         mat1_perm = mat1[np.ix_(perm, perm)]
         ut1_perm = upper_tri(mat1_perm)
+        if np.std(ut1_perm) == 0:
+            total += 1
+            continue
         r, _ = stats.spearmanr(ut1_perm, ut2)
         if r >= obs:
             count += 1
@@ -80,51 +95,57 @@ def mantel_test(mat1, mat2, n):
     return obs, count / total, total
 
 # ==============================================================================
-# Load transfer matrix (symmetrize)
+# Helper: load and reorder matrix by THEMES
 # ==============================================================================
-transfer_df = pd.read_csv(TRANSFER_PATH, index_col=0, encoding='utf-8-sig')
+def load_and_reorder(csv_path):
+    """Load a CSV matrix and reorder rows/columns to match THEMES."""
+    df = pd.read_csv(csv_path, index_col=0, encoding="utf-8-sig")
+    theme_map = {}
+    for label in list(df.index):
+        if label in MATRIX_LABEL_MAP:
+            theme_map[MATRIX_LABEL_MAP[label]] = label
+        else:
+            theme_map[label] = label
 
-transfer_theme_map = {}
-for label in list(transfer_df.index):
-    if label in MATRIX_LABEL_MAP:
-        transfer_theme_map[MATRIX_LABEL_MAP[label]] = label
-    else:
-        transfer_theme_map[label] = label
+    matrix = np.array([
+        [df.loc[theme_map.get(THEMES[i], THEMES[i]),
+                theme_map.get(THEMES[j], THEMES[j])]
+         for j in range(n_themes)]
+        for i in range(n_themes)
+    ], dtype=float)
+    return matrix
 
-probing_matrix = np.array([
-    [transfer_df.loc[transfer_theme_map.get(THEMES[i], THEMES[i]),
-                     transfer_theme_map.get(THEMES[j], THEMES[j])]
-     for j in range(n_themes)]
-    for i in range(n_themes)
-], dtype=float)
+# ==============================================================================
+# Load probing transfer matrix (symmetrize)
+# ==============================================================================
+probing_matrix = load_and_reorder(TRANSFER_PATH)
 probing_sym = (probing_matrix + probing_matrix.T) / 2
 
 # ==============================================================================
 # Load cosine similarity matrix
 # ==============================================================================
-cosine_df = pd.read_csv(COSINE_PATH, index_col=0, encoding='utf-8-sig')
+cos_matrix = load_and_reorder(COSINE_PATH)
 
-cosine_theme_map = {}
-for label in list(cosine_df.index):
-    if label in MATRIX_LABEL_MAP:
-        cosine_theme_map[MATRIX_LABEL_MAP[label]] = label
-    else:
-        cosine_theme_map[label] = label
-
-cos_matrix = np.array([
-    [cosine_df.loc[cosine_theme_map.get(THEMES[i], THEMES[i]),
-                   cosine_theme_map.get(THEMES[j], THEMES[j])]
-     for j in range(n_themes)]
-    for i in range(n_themes)
-], dtype=float)
+# ==============================================================================
+# Load baseline correlation matrices
+# ==============================================================================
+baseline_matrices = {}
+baseline_files = glob.glob(os.path.join(BASELINE_DIR, "baseline_corr_*.csv"))
+for fpath in sorted(baseline_files):
+    fname = os.path.basename(fpath)
+    # Extract label from filename (e.g., baseline_corr_gpt-5.1.csv -> GPT-5.1)
+    label = fname.replace("baseline_corr_", "").replace(".csv", "").replace("_", " ").title()
+    df = pd.read_csv(fpath, index_col=0, encoding="utf-8-sig")
+    baseline_matrices[label] = df.values.astype(float)
+    print(f"Loaded baseline: {label} ({fpath})")
 
 # ==============================================================================
 # Load Taniguchi-Asahi survey data and compute Spearman correlation matrix
 # ==============================================================================
 if not os.path.exists(TANIGUCHI_PATH):
-    print(f"Taniguchi-Asahi survey data not found: {TANIGUCHI_PATH}")
+    print(f"\nTaniguchi-Asahi survey data not found: {TANIGUCHI_PATH}")
     print("Please set TANIGUCHI_PATH to your local copy.")
-    print("Proceeding with transfer vs. cosine comparison only.\n")
+    print("Proceeding without Taniguchi-Asahi comparisons.\n")
     tani_matrix = None
 else:
     df = pd.read_csv(TANIGUCHI_PATH, encoding="utf-8-sig")
@@ -151,30 +172,38 @@ else:
 # ==============================================================================
 # Run Mantel tests
 # ==============================================================================
-print("=" * 70)
+print("\n" + "=" * 70)
 print(f"Mantel test (exact enumeration, {n_themes}! = 720 permutations)")
 print("=" * 70)
 
 comparisons = [
     ("Probing transfer vs. Cosine similarity", probing_sym, cos_matrix),
 ]
+
 if tani_matrix is not None:
     comparisons.extend([
         ("Probing transfer vs. Taniguchi-Asahi survey", probing_sym, tani_matrix),
         ("Cosine similarity vs. Taniguchi-Asahi survey", cos_matrix, tani_matrix),
     ])
+    # Baseline vs. Taniguchi-Asahi
+    for label, bl_matrix in baseline_matrices.items():
+        comparisons.append((f"Baseline ({label}) vs. Taniguchi-Asahi survey", bl_matrix, tani_matrix))
 
 results = []
 for label, mat1, mat2 in comparisons:
     rho, p_rho, n_perm = mantel_test(mat1, mat2, n_themes)
-    results.append({'Comparison': label, 'Spearman_rho': rho, 'p_value': p_rho})
-    print(f"\n{label}:")
-    print(f"  Spearman rho = {rho:.4f},  p = {p_rho:.4f}")
+    results.append({"Comparison": label, "Spearman_rho": rho, "p_value": p_rho})
+    if np.isnan(rho):
+        print(f"\n{label}:")
+        print(f"  N/A (zero variance in correlation matrix)")
+    else:
+        print(f"\n{label}:")
+        print(f"  Spearman rho = {rho:.4f},  p = {p_rho:.4f}")
 
 # ==============================================================================
 # Save results
 # ==============================================================================
 df_results = pd.DataFrame(results)
 csv_path = os.path.join(RESULT_DIR, "mantel_test_results.csv")
-df_results.to_csv(csv_path, index=False, encoding='utf-8-sig')
+df_results.to_csv(csv_path, index=False, encoding="utf-8-sig")
 print(f"\nSaved: {csv_path}")
