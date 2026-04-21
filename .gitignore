@@ -2,3 +2,14 @@ output/
 __pycache__/
 *.pyc
 .DS_Store
+
+# LaTeX build artifacts
+submission/*.aux
+submission/*.log
+submission/*.out
+submission/*.bbl
+submission/*.blg
+submission/*.fls
+submission/*.fdb_latexmk
+submission/*.toc
+submission/*.synctex.gz

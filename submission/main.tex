@@ -1,0 +1,293 @@
+% PLOS ONE Submission: Do LLMs learn belief networks?
+% Template source: PLOS ONE Latex Template v3.7 (Aug 2025)
+% Last updated: 2026-04-21
+
+% ============================================================================
+%  -- FIGURES AND TABLES (PLOS guidelines)
+%  * Do NOT include figures in this file; upload as separate TIFF/EPS files
+%  * Place figure captions in text immediately after the first-citing paragraph
+%  * Use "Fig" (not "Figure") for citations, e.g., Fig~\ref{fig1}
+%  * Tables should be cell-based (no graphics, no merged cells outside standard use)
+% ============================================================================
+
+\documentclass[10pt,letterpaper]{article}
+\usepackage[top=0.85in,left=2.75in,footskip=0.75in]{geometry}
+
+% amsmath and amssymb packages, useful for mathematical formulas and symbols
+\usepackage{amsmath,amssymb}
+
+% Use adjustwidth environment to exceed column width (see example table in text)
+\usepackage{changepage}
+
+% textcomp package and marvosym package for additional characters
+\usepackage{textcomp,marvosym}
+
+% cite package, to clean up citations in the main text. Do not remove.
+\usepackage{cite}
+
+% Use nameref to cite supporting information files (see Supporting Information section for more info)
+\usepackage{nameref,hyperref}
+
+% line numbers
+\usepackage[right]{lineno}
+
+% ligatures disabled
+\usepackage[nopatch=eqnum]{microtype}
+\DisableLigatures[f]{encoding = *, family = * }
+
+% color can be used to apply background shading to table cells only
+\usepackage[table]{xcolor}
+
+% array package and thick rules for tables
+\usepackage{array}
+
+% create "+" rule type for thick vertical lines
+\newcolumntype{+}{!{\vrule width 2pt}}
+
+% create \thickcline for thick horizontal lines of variable length
+\newlength\savedwidth
+\newcommand\thickcline[1]{%
+  \noalign{\global\savedwidth\arrayrulewidth\global\arrayrulewidth 2pt}%
+  \cline{#1}%
+  \noalign{\vskip\arrayrulewidth}%
+  \noalign{\global\arrayrulewidth\savedwidth}%
+}
+
+% \thickhline command for thick horizontal lines that span the table
+\newcommand\thickhline{\noalign{\global\savedwidth\arrayrulewidth\global\arrayrulewidth 2pt}%
+\hline
+\noalign{\global\arrayrulewidth\savedwidth}}
+
+
+% Remove comment for double spacing
+%\usepackage{setspace}
+%\doublespacing
+
+% Text layout
+\raggedright
+\setlength{\parindent}{0.5cm}
+\textwidth 5.25in
+\textheight 8.75in
+
+% Bold the 'Figure #' in the caption and separate it from the title/caption with a period
+% Captions will be left justified
+\usepackage[aboveskip=1pt,labelfont=bf,labelsep=period,justification=raggedright,singlelinecheck=off]{caption}
+\renewcommand{\figurename}{Fig}
+
+% Please use the included `plos2025.bst` as your BibTeX style
+\bibliographystyle{plos2025}
+
+% Remove brackets from numbering in List of References
+\makeatletter
+\renewcommand{\@biblabel}[1]{\quad#1.}
+\makeatother
+
+
+% Header and Footer with logo
+\usepackage{lastpage,fancyhdr,graphicx}
+\usepackage{epstopdf}
+\pagestyle{fancy}
+\fancyhf{}
+\rfoot{\thepage/\pageref{LastPage}}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrule}{\hrule height 2pt \vspace{2mm}}
+\fancyheadoffset[L]{2.25in}
+\fancyfootoffset[L]{2.25in}
+\lfoot{\today}
+
+
+\begin{document}
+\vspace*{0.2in}
+
+% Title must be 250 characters or less.
+\begin{flushleft}
+{\Large
+\textbf\newline{Do LLMs learn belief networks? Evidence from cross-issue correlations in policy stances}
+}
+\newline
+% Insert author names, affiliations and corresponding author email.
+\\
+Takahiko Shigemasa\textsuperscript{1*},
+Takuma Tanaka\textsuperscript{1}
+\\
+\bigskip
+\textbf{1} Graduate School of Data Science, Shiga University, Hikone, Shiga, Japan
+\\
+\bigskip
+
+% Use the asterisk to denote corresponding authorship and provide email address in note below.
+* tkhk405@gmail.com
+
+\end{flushleft}
+
+% ORCIDs (registered in Editorial Manager submission system):
+%   Takahiko Shigemasa: 0009-0003-0924-5450
+%   Takuma Tanaka:      0000-0003-1898-8064
+
+% Please keep the abstract below 300 words
+\section*{Abstract}
+In human society, attitudes toward different issues are systematically associated. For example, people who support environmental regulations tend to oppose gun ownership rights. This pattern is referred to as the belief network. LLMs learn human attitudes from large-scale text, and it has been shown that attitudes, such as those toward environmental regulations and gun ownership, are represented as specific directions within LLMs. However, it remains untested whether these directions align or remain independent across issues, i.e., whether the structure corresponding to the belief network also exists within LLMs. In this study, we used probing to identify the direction of policy stance representation for each of the six Japanese policy issues (defense, social welfare, public works, fiscal stimulus, North Korea, and public safety). We then compared the degree of cross-issue alignment with cross-issue correlations in the policy stances of Japanese national legislators (Diet members) from the UTAS, examining whether this structure exists in LLM internal representations. We also conducted silicon sampling, in which an LLM directly responds to policy stance questions, to examine whether this structure can be reproduced from final outputs alone. The results showed that the degree of cross-issue alignment in LLM internal representations varied substantially across issue pairs: for instance, defense and public works, semantically distinct issues, exhibited high alignment, whereas social welfare and public works were nearly independent. These are patterns not predictable from semantic similarity alone. This pattern of cross-issue alignment was significantly and strongly correlated with cross-issue correlations in Diet members' policy stances, indicating that this structure exists in LLM internal representations. By contrast, silicon sampling failed to reproduce this structure. These findings suggest that LLMs learn the structure corresponding to the belief network in human society from large-scale text corpora, even though this structure is not explicitly described in any individual statement.
+
+% PLOS ONE does not require Author summary (skip this section)
+
+\linenumbers
+
+% Use "Eq" instead of "Equation" for equation citations.
+\section*{Introduction}
+% TODO: Transfer English translation from japanese_english_1_draft.tex (Section \S1)
+% Reference: plosone-rules.md Part B.5
+
+
+\section*{Materials and methods}
+% TODO: Transfer English translation from japanese_english_1_draft.tex (Section \S2)
+% Reference: plosone-rules.md Part B.6
+
+% Ethics statement (recommended placement: beginning of methods)
+% This study did not involve human participants, animal subjects, or biological
+% samples; therefore, no institutional review board (IRB) approval or ethical
+% clearance was required. The study analyzed publicly available survey data
+% from the UTokyo-Asahi Survey (UTAS), which is distributed by the University
+% of Tokyo for academic research use.
+
+\subsection*{Analysis using silicon sampling}
+\label{sec:baseline}
+% TODO: Transfer section 2.1
+
+
+\subsection*{Generation of synthetic politicians' statements}
+\label{sec:data_generation}
+% TODO: Transfer section 2.2
+
+
+\subsection*{Extraction of activation vectors}
+\label{sec:activation}
+% TODO: Transfer section 2.3
+
+
+\subsection*{Probing analysis by layer and head}
+\label{sec:probing}
+% TODO: Transfer section 2.4
+
+
+\subsection*{Cross-issue analysis}
+\label{sec:cross_theme}
+% TODO: Transfer section 2.5
+
+\subsubsection*{Overview}
+\label{sec:cross_theme_purpose}
+% TODO
+
+\subsubsection*{Transfer performance evaluation}
+\label{sec:transfer}
+% TODO
+
+\subsubsection*{Cosine similarity analysis}
+\label{sec:cosine}
+% TODO
+
+
+\subsection*{Comparison with real-world data}
+\label{sec:realworld}
+% TODO: Transfer section 2.6
+
+
+\section*{Results}
+% TODO: Transfer English translation from japanese_english_1_draft.tex (Section \S3)
+% Reference: plosone-rules.md Part B.7
+
+\subsection*{Analysis using silicon sampling}
+\label{sec:baseline_results}
+% TODO: Transfer section 3.1
+
+
+\subsection*{Probing performance across layers and heads}
+\label{sec:layer_analysis}
+% TODO: Transfer section 3.2
+
+
+\subsection*{Cross-issue analysis}
+\label{sec:cross_theme_results}
+% TODO: Transfer section 3.3
+
+\subsubsection*{Transfer performance evaluation}
+\label{sec:transfer_results}
+% TODO
+
+\subsubsection*{Cosine similarity analysis}
+\label{sec:cosine_results}
+% TODO
+
+
+\subsection*{Comparison with real-world data}
+\label{sec:realworld_results}
+% TODO: Transfer section 3.4
+
+\subsubsection*{Cross-issue correlations in the UTAS}
+\label{sec:taniguchi_overview}
+% TODO
+
+\subsubsection*{Structural comparison}
+\label{sec:structure_comparison}
+% TODO
+
+\subsubsection*{Elected members vs. all candidates}
+\label{sec:elected_vs_candidates}
+% TODO
+
+
+\section*{Discussion}
+% TODO: Transfer English translation from japanese_english_1_draft.tex (Section \S4)
+% Reference: plosone-rules.md Part B.8
+% Note: Discussion opens with present perfect tense ("we have investigated...")
+% Conclusion is integrated within Discussion (no separate Conclusion section)
+
+
+\section*{Acknowledgments}
+% TODO: Add acknowledgments (if any).
+% Include AI tool disclosure (required by PLOS):
+%   The authors used Claude Code (Anthropic) to assist with English
+%   translation review, LaTeX template conversion, and proofreading of the
+%   manuscript. All study design, analyses, interpretation of results, and
+%   conclusions are the authors' own, and the authors take full
+%   responsibility for the content of this manuscript.
+
+
+\nolinenumbers
+
+% Bibliography
+% Use the included `plos2025.bst` as the BibTeX style and `main.bib` as the
+% reference database (copied from bibsample.bib with NCBI abbreviations and
+% DOIs added; see plosone-rules.md Part B.10).
+\bibliography{main}
+
+
+% ============================================================================
+% Supporting Information
+% ============================================================================
+\section*{Supporting information}
+
+\paragraph*{S1 Appendix.}
+\label{S1_Appendix}
+{\bf Prompts used in the study.} Includes system and user prompts for the silicon sampling analysis, and user prompts, role instructions, and media instructions for synthetic statement generation.
+
+\paragraph*{S1 Table.}
+\label{S1_Table}
+{\bf Question codes for the six policy issues in each round of the UTAS.}
+
+\paragraph*{S2 Table.}
+\label{S2_Table}
+{\bf Probing performance summary by issue.} Max $\rho$: best value across all 672 heads (42 layers $\times$ 16 heads). Best layer: layer number of the best head. Mean $\rho$ (top-20 heads): mean $\rho$ over the top-20 heads averaged across six issues (same criterion as the transfer analysis). Mean $\rho$ (all heads): mean $\rho$ across all 672 heads.
+
+\paragraph*{S3 Table.}
+\label{S3_Table}
+{\bf Top-20 heads by mean Spearman $\rho$ averaged across six issues, in descending order.}
+
+\paragraph*{S4 Table.}
+\label{S4_Table}
+{\bf Union of top-20 heads across six issues with $\rho$ values.} Each cell represents the $\rho$ value if the head is in the top-20 for that issue; otherwise, the cell is marked with ``---''.
+
+\paragraph*{S1 Fig.}
+\label{S1_Fig}
+{\bf Prediction distribution of probing across six policy issues.} Each panel shows the distribution of predicted stances by correct stance, based on the top-20 heads for each issue. Cell values represent proportions (0--1). Horizontal and vertical axes (1--5) represent the 5-point policy stance scale (1 = agree, 5 = disagree).
+
+\end{document}
