@@ -69,9 +69,9 @@ F. 治安を守るためにプライバシーや個人の権利が制約され�
 {"A": ?, "B": ?, "C": ?, "D": ?, "E": ?, "F": ?}"""
 
 MODEL_CONFIGS = {
-    "GPT-5.1":          {"temperature": 0.3, "provider": "openai"},
-    "Claude Opus 4.5":  {"temperature": 0.3, "provider": "anthropic"},
-    "Gemini 3.1":       {"temperature": 0.3, "provider": "google"},
+    "GPT-5.1":          {"temperature": 0.8, "provider": "openai"},
+    "Claude Opus 4.5":  {"temperature": 0.8, "provider": "anthropic"},
+    "Gemini 3.1":       {"temperature": 0.8, "provider": "google"},
 }
 
 N_SAMPLES = 100
