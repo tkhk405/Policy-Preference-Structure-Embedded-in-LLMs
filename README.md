@@ -12,7 +12,7 @@ Takahiko Shigemasa and Takuma Tanaka (Shiga University)
 
 ## Overview
 
-This repository provides the code and synthetic data used to investigate whether large language models (LLMs) encode cross-issue correlations among policy stances in their internal representations, and whether these correlations correspond to those observed in Diet members' policy stances from the Taniguchi-Asahi Survey (UTAS).
+This repository provides the code and synthetic data for the paper, which examines whether large language models (LLMs) learn belief networks — systematic associations among attitudes across policy issues — from large-scale text corpora. Stance directions for six policy issues are estimated by probing the internal representations of a transformer-based LLM, and the cross-issue alignment among these directions is compared with cross-issue correlations among Japanese Diet members' policy stances from the Taniguchi-Asahi Survey (UTAS).
 
 ## Repository Structure
 
