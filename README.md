@@ -104,7 +104,7 @@ Output: `output/cosine_results/cosine_similarity_matrix.csv`
 
 ### Step 6: Baseline analysis (optional, requires API keys)
 
-Query LLMs directly for policy stances as a comparison baseline (100 trials per model, temperature = 0.3).
+Query LLMs directly for policy stances as a comparison baseline (100 trials per model, temperature = 0.8).
 
 ```bash
 export OPENAI_API_KEY="your-key"
