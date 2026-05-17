@@ -1,4 +1,4 @@
-# Policy Preference Structure Embedded in LLMs
+# Do LLMs learn belief networks?
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19726746.svg)](https://doi.org/10.5281/zenodo.19726746)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -6,7 +6,7 @@
 
 Code and data for the paper:
 
-**Policy Preference Structure Embedded in LLMs: Validation through Probing and Parliamentary Survey Data**
+**Do LLMs learn belief networks? Evidence from cross-issue correlations in policy stances**
 
 Takahiko Shigemasa and Takuma Tanaka (Shiga University)
 
@@ -38,8 +38,8 @@ This repository provides the code and synthetic data used to investigate whether
 ## Setup
 
 ```bash
-git clone https://github.com/tkhk405/Policy-Preference-Structure-Embedded-in-LLMs.git
-cd Policy-Preference-Structure-Embedded-in-LLMs
+git clone https://github.com/tkhk405/Do-LLMs-Learn-Belief-Networks.git
+cd Do-LLMs-Learn-Belief-Networks
 pip install -r requirements.txt
 ```
 
