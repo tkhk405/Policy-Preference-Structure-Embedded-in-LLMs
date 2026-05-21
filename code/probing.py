@@ -45,8 +45,9 @@ INPUT_DIR = os.path.join(REPO_ROOT, "data")
 VEC_DIR = os.path.join(REPO_ROOT, "output", "activation_vectors")
 RESULT_DIR = os.path.join(REPO_ROOT, "output", "probing_results")
 
-for subdir in ["rho", "coef", "alpha", "theta", "preds", "full"]:
-    os.makedirs(os.path.join(RESULT_DIR, subdir), exist_ok=True)
+def ensure_result_dirs():
+    for subdir in ["rho", "coef", "alpha", "theta", "preds", "full"]:
+        os.makedirs(os.path.join(RESULT_DIR, subdir), exist_ok=True)
 
 # ==============================================================================
 # Dataset definitions (6 policy issues)
@@ -143,82 +144,87 @@ def process_one_head(h_idx, layer_data, labels_ordinal, alphas):
 # ==============================================================================
 # Main loop
 # ==============================================================================
-dataset_list = list(DATASETS.items())
+def main():
+    ensure_result_dirs()
+    dataset_list = list(DATASETS.items())
 
-for ds_idx, (theme_name, (csv_file, vec_prefix, save_prefix)) in enumerate(dataset_list):
-    print(f"\n{'=' * 60}")
-    print(f"[{ds_idx+1}/{len(dataset_list)}] {theme_name}")
-    print(f"{'=' * 60}")
+    for ds_idx, (theme_name, (csv_file, vec_prefix, save_prefix)) in enumerate(dataset_list):
+        print(f"\n{'=' * 60}")
+        print(f"[{ds_idx+1}/{len(dataset_list)}] {theme_name}")
+        print(f"{'=' * 60}")
 
-    # Load data
-    csv_path = os.path.join(INPUT_DIR, csv_file)
-    if not os.path.exists(csv_path):
-        print(f"CSV not found: {csv_path}")
-        continue
-
-    df = pd.read_csv(csv_path)
-    valid_mask = df['Stance_Value'].isin([1, 2, 3, 4, 5]).values
-    df_filtered = df[valid_mask].copy()
-
-    labels_original = df_filtered['Stance_Value'].astype(int).values
-    labels_ordinal = labels_original - 1  # Convert to 0-4
-
-    print(f"Samples: {len(df_filtered)}")
-
-    heatmap_rho = np.zeros((NUM_LAYERS, NUM_HEADS))
-    best_alpha_data = np.zeros((NUM_LAYERS, NUM_HEADS))
-    heatmap_coef = None
-    heatmap_theta = None
-
-    # Layer-wise loop
-    for layer_idx in tqdm(range(NUM_LAYERS), desc=f"[{save_prefix}]"):
-        vec_path = os.path.join(VEC_DIR, f"{vec_prefix}_layer_{layer_idx:02d}.npy")
-
-        if not os.path.exists(vec_path):
-            print(f"Vector not found: {vec_path}")
+        # Load data
+        csv_path = os.path.join(INPUT_DIR, csv_file)
+        if not os.path.exists(csv_path):
+            print(f"CSV not found: {csv_path}")
             continue
 
-        full_layer_data = np.load(vec_path)
-        if full_layer_data.shape[0] != len(df):
-            print(f"Size mismatch: CSV={len(df)}, NPY={full_layer_data.shape[0]}")
-            continue
+        df = pd.read_csv(csv_path)
+        valid_mask = df['Stance_Value'].isin([1, 2, 3, 4, 5]).values
+        df_filtered = df[valid_mask].copy()
 
-        layer_data = full_layer_data[valid_mask]
+        labels_original = df_filtered['Stance_Value'].astype(int).values
+        labels_ordinal = labels_original - 1  # Convert to 0-4
 
-        if heatmap_coef is None:
-            heatmap_coef = np.zeros((NUM_LAYERS, NUM_HEADS, layer_data.shape[2]))
-            heatmap_theta = np.zeros((NUM_LAYERS, NUM_HEADS, 4))
+        print(f"Samples: {len(df_filtered)}")
 
-        layer_oof_preds = np.zeros((len(labels_original), NUM_HEADS))
+        heatmap_rho = np.zeros((NUM_LAYERS, NUM_HEADS))
+        best_alpha_data = np.zeros((NUM_LAYERS, NUM_HEADS))
+        heatmap_coef = None
+        heatmap_theta = None
 
-        # Parallel processing across heads
-        results = Parallel(n_jobs=N_JOBS)(
-            delayed(process_one_head)(h_idx, layer_data, labels_ordinal, ALPHAS)
-            for h_idx in range(NUM_HEADS)
-        )
+        # Layer-wise loop
+        for layer_idx in tqdm(range(NUM_LAYERS), desc=f"[{save_prefix}]"):
+            vec_path = os.path.join(VEC_DIR, f"{vec_prefix}_layer_{layer_idx:02d}.npy")
 
-        for h_idx, best_score, best_alpha, coef, theta, oof_preds in results:
-            heatmap_rho[layer_idx, h_idx] = best_score
-            best_alpha_data[layer_idx, h_idx] = best_alpha
-            heatmap_coef[layer_idx, h_idx, :] = coef
-            heatmap_theta[layer_idx, h_idx, :] = theta
-            layer_oof_preds[:, h_idx] = oof_preds
+            if not os.path.exists(vec_path):
+                print(f"Vector not found: {vec_path}")
+                continue
 
-        # Save per-layer results
-        np.save(os.path.join(RESULT_DIR, "rho",   f"{save_prefix}_layer_{layer_idx:02d}_rho.npy"),   heatmap_rho[layer_idx])
-        np.save(os.path.join(RESULT_DIR, "coef",  f"{save_prefix}_layer_{layer_idx:02d}_coef.npy"),  heatmap_coef[layer_idx])
-        np.save(os.path.join(RESULT_DIR, "theta", f"{save_prefix}_layer_{layer_idx:02d}_theta.npy"), heatmap_theta[layer_idx])
-        np.save(os.path.join(RESULT_DIR, "alpha", f"{save_prefix}_layer_{layer_idx:02d}_alpha.npy"), best_alpha_data[layer_idx])
-        np.save(os.path.join(RESULT_DIR, "preds", f"{save_prefix}_layer_{layer_idx:02d}_preds.npy"), layer_oof_preds)
+            full_layer_data = np.load(vec_path)
+            if full_layer_data.shape[0] != len(df):
+                print(f"Size mismatch: CSV={len(df)}, NPY={full_layer_data.shape[0]}")
+                continue
 
-    # Save aggregated results
-    if heatmap_coef is not None:
-        np.save(os.path.join(RESULT_DIR, "full", f"{save_prefix}_heatmap_rho_full.npy"),  heatmap_rho)
-        np.save(os.path.join(RESULT_DIR, "full", f"{save_prefix}_coef_full.npy"),         heatmap_coef)
-        np.save(os.path.join(RESULT_DIR, "full", f"{save_prefix}_theta_full.npy"),        heatmap_theta)
-        np.save(os.path.join(RESULT_DIR, "full", f"{save_prefix}_bestAlpha_full.npy"),    best_alpha_data)
-        np.save(os.path.join(RESULT_DIR, "full", f"{save_prefix}_labels.npy"),            labels_original)
+            layer_data = full_layer_data[valid_mask]
 
-    print(f"{theme_name} done")
+            if heatmap_coef is None:
+                heatmap_coef = np.zeros((NUM_LAYERS, NUM_HEADS, layer_data.shape[2]))
+                heatmap_theta = np.zeros((NUM_LAYERS, NUM_HEADS, 4))
 
-print("\nAll issues completed")
+            layer_oof_preds = np.zeros((len(labels_original), NUM_HEADS))
+
+            # Parallel processing across heads
+            results = Parallel(n_jobs=N_JOBS)(
+                delayed(process_one_head)(h_idx, layer_data, labels_ordinal, ALPHAS)
+                for h_idx in range(NUM_HEADS)
+            )
+
+            for h_idx, best_score, best_alpha, coef, theta, oof_preds in results:
+                heatmap_rho[layer_idx, h_idx] = best_score
+                best_alpha_data[layer_idx, h_idx] = best_alpha
+                heatmap_coef[layer_idx, h_idx, :] = coef
+                heatmap_theta[layer_idx, h_idx, :] = theta
+                layer_oof_preds[:, h_idx] = oof_preds
+
+            # Save per-layer results
+            np.save(os.path.join(RESULT_DIR, "rho",   f"{save_prefix}_layer_{layer_idx:02d}_rho.npy"),   heatmap_rho[layer_idx])
+            np.save(os.path.join(RESULT_DIR, "coef",  f"{save_prefix}_layer_{layer_idx:02d}_coef.npy"),  heatmap_coef[layer_idx])
+            np.save(os.path.join(RESULT_DIR, "theta", f"{save_prefix}_layer_{layer_idx:02d}_theta.npy"), heatmap_theta[layer_idx])
+            np.save(os.path.join(RESULT_DIR, "alpha", f"{save_prefix}_layer_{layer_idx:02d}_alpha.npy"), best_alpha_data[layer_idx])
+            np.save(os.path.join(RESULT_DIR, "preds", f"{save_prefix}_layer_{layer_idx:02d}_preds.npy"), layer_oof_preds)
+
+        # Save aggregated results
+        if heatmap_coef is not None:
+            np.save(os.path.join(RESULT_DIR, "full", f"{save_prefix}_heatmap_rho_full.npy"),  heatmap_rho)
+            np.save(os.path.join(RESULT_DIR, "full", f"{save_prefix}_coef_full.npy"),         heatmap_coef)
+            np.save(os.path.join(RESULT_DIR, "full", f"{save_prefix}_theta_full.npy"),        heatmap_theta)
+            np.save(os.path.join(RESULT_DIR, "full", f"{save_prefix}_bestAlpha_full.npy"),    best_alpha_data)
+            np.save(os.path.join(RESULT_DIR, "full", f"{save_prefix}_labels.npy"),            labels_original)
+
+        print(f"{theme_name} done")
+
+    print("\nAll issues completed")
+
+if __name__ == "__main__":
+    main()

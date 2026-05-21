@@ -32,7 +32,9 @@ INPUT_DIR = os.path.join(REPO_ROOT, "data")
 VEC_DIR = os.path.join(REPO_ROOT, "output", "activation_vectors")
 PROBING_DIR = os.path.join(REPO_ROOT, "output", "probing_results", "full")
 RESULT_DIR = os.path.join(REPO_ROOT, "output", "transfer_results")
-os.makedirs(RESULT_DIR, exist_ok=True)
+
+def ensure_result_dir():
+    os.makedirs(RESULT_DIR, exist_ok=True)
 
 # ==============================================================================
 # Dataset definitions (6 policy issues)
@@ -54,84 +56,103 @@ TOP_N = 20
 # ==============================================================================
 # Select top 20 heads (by average score across 6 issues)
 # ==============================================================================
-rho_data = {}
-for theme, (_, _, save_prefix) in DATASETS.items():
-    rho_path = os.path.join(PROBING_DIR, f"{save_prefix}_heatmap_rho_full.npy")
-    rho_data[theme] = np.load(rho_path)
+def select_top_heads():
+    rho_data = {}
+    for theme, (_, _, save_prefix) in DATASETS.items():
+        rho_path = os.path.join(PROBING_DIR, f"{save_prefix}_heatmap_rho_full.npy")
+        rho_data[theme] = np.load(rho_path)
 
-avg_rho = np.mean(list(rho_data.values()), axis=0)  # (42, 16)
-flat_indices = np.argsort(avg_rho.flatten())[::-1][:TOP_N]
-top_heads = [(idx // NUM_HEADS, idx % NUM_HEADS) for idx in flat_indices]
-used_layers = sorted(set(l for l, h in top_heads))
+    avg_rho = np.mean(list(rho_data.values()), axis=0)  # (42, 16)
+    flat_indices = np.argsort(avg_rho.flatten())[::-1][:TOP_N]
+    top_heads = [(idx // NUM_HEADS, idx % NUM_HEADS) for idx in flat_indices]
+    used_layers = sorted(set(l for l, h in top_heads))
+    return top_heads, used_layers
 
-print(f"Top {TOP_N} heads (layers used: {used_layers})")
+def load_labels_and_coefficients():
+    labels_map = {}
+    masks_map = {}
+    coef_data = {}
 
-# ==============================================================================
-# Load data
-# ==============================================================================
-labels_map = {}
-masks_map = {}
-coef_data = {}
+    for theme, (csv_file, _, save_prefix) in DATASETS.items():
+        df = pd.read_csv(os.path.join(INPUT_DIR, csv_file))
+        valid_mask = df['Stance_Value'].isin([1, 2, 3, 4, 5]).values
+        masks_map[theme] = valid_mask
+        labels_map[theme] = df.loc[valid_mask, 'Stance_Value'].astype(float).values
 
-for theme, (csv_file, _, save_prefix) in DATASETS.items():
-    df = pd.read_csv(os.path.join(INPUT_DIR, csv_file))
-    valid_mask = df['Stance_Value'].isin([1, 2, 3, 4, 5]).values
-    masks_map[theme] = valid_mask
-    labels_map[theme] = df.loc[valid_mask, 'Stance_Value'].astype(float).values
+        coef_path = os.path.join(PROBING_DIR, f"{save_prefix}_coef_full.npy")
+        coef_data[theme] = np.load(coef_path)
 
-    coef_path = os.path.join(PROBING_DIR, f"{save_prefix}_coef_full.npy")
-    coef_data[theme] = np.load(coef_path)
+    return labels_map, masks_map, coef_data
 
-# ==============================================================================
-# Compute cross-domain transfer performance
-# ==============================================================================
-themes_list = list(DATASETS.keys())
-cross_scores = {(src, tgt): [] for src in themes_list for tgt in themes_list}
+def compute_transfer_matrix(top_heads, used_layers, labels_map, masks_map, coef_data):
+    themes_list = list(DATASETS.keys())
+    cross_scores = {(src, tgt): [] for src in themes_list for tgt in themes_list}
+    score_rows = []
 
-for layer_idx in tqdm(used_layers, desc="Layers"):
-    heads_in_layer = [h for l, h in top_heads if l == layer_idx]
+    for layer_idx in tqdm(used_layers, desc="Layers"):
+        heads_in_layer = [h for l, h in top_heads if l == layer_idx]
 
-    # Load activation vectors
-    layer_vecs = {}
-    for theme, (_, vec_prefix, _) in DATASETS.items():
-        vec_path = os.path.join(VEC_DIR, f"{vec_prefix}_layer_{layer_idx:02d}.npy")
-        full_vec = np.load(vec_path)
-        layer_vecs[theme] = full_vec[masks_map[theme]]
+        # Load activation vectors
+        layer_vecs = {}
+        for theme, (_, vec_prefix, _) in DATASETS.items():
+            vec_path = os.path.join(VEC_DIR, f"{vec_prefix}_layer_{layer_idx:02d}.npy")
+            full_vec = np.load(vec_path)
+            layer_vecs[theme] = full_vec[masks_map[theme]]
 
-    # Apply source coefficients to target vectors
-    for src in themes_list:
-        W = coef_data[src][layer_idx]
+        # Apply source coefficients to target vectors
+        for src in themes_list:
+            W = coef_data[src][layer_idx]
 
-        for tgt in themes_list:
-            X = layer_vecs[tgt]
-            y_true = labels_map[tgt]
+            for tgt in themes_list:
+                X = layer_vecs[tgt]
+                y_true = labels_map[tgt]
 
-            head_scores = []
-            for h in heads_in_layer:
-                scaler = StandardScaler()
-                X_h_scaled = scaler.fit_transform(X[:, h, :])
-                y_pred = X_h_scaled @ W[h]
+                for h in heads_in_layer:
+                    scaler = StandardScaler()
+                    X_h_scaled = scaler.fit_transform(X[:, h, :])
+                    y_pred = X_h_scaled @ W[h]
 
-                if np.std(y_pred) > 0:
-                    rho, _ = spearmanr(y_true, y_pred)
-                    if not np.isnan(rho):
-                        head_scores.append(rho)
+                    if np.std(y_pred) > 0:
+                        rho, _ = spearmanr(y_true, y_pred)
+                        if not np.isnan(rho):
+                            cross_scores[(src, tgt)].append(rho)
+                            score_rows.append({
+                                "source": src,
+                                "target": tgt,
+                                "layer": layer_idx,
+                                "head": h,
+                                "rho": rho,
+                            })
 
-            if head_scores:
-                cross_scores[(src, tgt)].append(np.mean(head_scores))
+    transfer_matrix = pd.DataFrame(index=themes_list, columns=themes_list, dtype=float)
 
-# ==============================================================================
-# Aggregate and save results
-# ==============================================================================
-transfer_matrix = pd.DataFrame(index=themes_list, columns=themes_list, dtype=float)
+    for (src, tgt), scores in cross_scores.items():
+        if scores:
+            transfer_matrix.loc[src, tgt] = np.mean(scores)
 
-for (src, tgt), scores in cross_scores.items():
-    if scores:
-        transfer_matrix.loc[src, tgt] = np.mean(scores)
+    score_df = pd.DataFrame(score_rows)
+    return transfer_matrix, score_df
 
-print("\nTransfer performance matrix:")
-print(transfer_matrix.to_string())
+def main():
+    ensure_result_dir()
+    top_heads, used_layers = select_top_heads()
+    print(f"Top {TOP_N} heads (layers used: {used_layers})")
 
-csv_path = os.path.join(RESULT_DIR, "transfer_matrix.csv")
-transfer_matrix.to_csv(csv_path, encoding='utf-8-sig')
-print(f"\nSaved: {csv_path}")
+    labels_map, masks_map, coef_data = load_labels_and_coefficients()
+    transfer_matrix, score_df = compute_transfer_matrix(
+        top_heads, used_layers, labels_map, masks_map, coef_data
+    )
+
+    print("\nTransfer performance matrix:")
+    print(transfer_matrix.to_string())
+
+    csv_path = os.path.join(RESULT_DIR, "transfer_matrix.csv")
+    transfer_matrix.to_csv(csv_path, encoding='utf-8-sig')
+    print(f"\nSaved: {csv_path}")
+
+    score_path = os.path.join(RESULT_DIR, "transfer_head_scores.csv")
+    score_df.to_csv(score_path, index=False, encoding='utf-8-sig')
+    print(f"Saved: {score_path}")
+
+if __name__ == "__main__":
+    main()

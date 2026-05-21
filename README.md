@@ -75,6 +75,8 @@ Output: `output/activation_vectors/{Theme}_layer_{XX}.npy` (252 files, ~8 GB tot
 ### Step 3: Probing
 
 Train ordinal logistic regression (LogisticAT) probes on each of the 672 layer-head pairs (42 layers x 16 heads) with 5-fold stratified cross-validation.
+For each layer-head pair, the reported Spearman correlation is the mean of the validation-fold Spearman correlations.
+After the regularization parameter is selected by cross-validation, the final probe is refit on all available samples for that issue, layer, and head; the resulting coefficients and thresholds are saved for the downstream transfer analysis.
 
 ```bash
 python probing.py
@@ -85,6 +87,8 @@ Output: `output/probing_results/` (Spearman correlations, coefficients, threshol
 ### Step 4: Transfer analysis
 
 Evaluate cross-issue transfer performance using the top-20 heads by average Spearman correlation across all 6 issues.
+The transfer score applies the source-issue coefficient vector to per-head standardized target-issue activation vectors (each dimension centered to zero mean and unit variance across the target-issue samples; see `transfer_analysis.py:111-113`) and computes the Spearman correlation between the resulting linear scores and the target-issue stance labels.
+Issue-specific ordinal thresholds are not used in this transfer step.
 
 ```bash
 python transfer_analysis.py
@@ -117,11 +121,13 @@ Output: `output/baseline_results/baseline_corr_*.csv`
 
 ### Step 7: Mantel test
 
-Compare the transfer, cosine similarity, and baseline matrices with the Taniguchi-Asahi parliamentary survey correlation matrix via exact Mantel test (6! = 720 permutations).
+Compare the transfer, cosine similarity, and baseline matrices with the Taniguchi-Asahi parliamentary survey correlation matrices via exact Mantel test (6! = 720 permutations).
 
-The Taniguchi-Asahi Survey data is not included due to redistribution restrictions. To run the full comparison, set `TANIGUCHI_PATH` in `mantel_test.py` to your local copy. Without it, only the transfer vs. cosine similarity comparison is performed.
+The Taniguchi-Asahi Survey data is not included due to redistribution restrictions. To run the full comparison, set `TANIGUCHI_ELECTED_PATH` and `TANIGUCHI_ALL_CANDIDATES_PATH` to your local CSV files. For backward compatibility, `TANIGUCHI_PATH` is treated as the elected-member CSV path when `TANIGUCHI_ELECTED_PATH` is not set. Without UTAS data, only the transfer vs. cosine similarity comparison is performed.
 
 ```bash
+export TANIGUCHI_ELECTED_PATH="/path/to/elected_members.csv"
+export TANIGUCHI_ALL_CANDIDATES_PATH="/path/to/all_candidates.csv"
 python mantel_test.py
 ```
 
